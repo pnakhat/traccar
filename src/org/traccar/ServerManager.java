@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,6 +177,7 @@ public class ServerManager {
         initRitiServer("riti");
         initUlbotechServer("ulbotech");
         initTramigoServer("tramigo");
+        initTramigoServer("tr900");
         
         // Initialize web server
         if (Boolean.valueOf(properties.getProperty("http.enable"))) {
@@ -1231,7 +1232,7 @@ public class ServerManager {
         }
     }
 
-    /*private void initTr900Server(final String protocol) throws SQLException {
+    private void initTr900Server(final String protocol) throws SQLException {
         if (isProtocolEnabled(properties, protocol)) {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
@@ -1243,6 +1244,6 @@ public class ServerManager {
                 }
             });
         }
-    }*/
+    }
 
 }

@@ -16,21 +16,20 @@
 package org.traccar.database;
 
 import com.mchange.v2.c3p0.ComboPooledDataSource;
+import org.traccar.helper.DriverDelegate;
+import org.traccar.helper.Log;
+import org.traccar.model.*;
+import org.xml.sax.InputSource;
+import javax.sql.DataSource;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.StringReader;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.sql.*;
 import java.util.*;
-import javax.sql.DataSource;
-import javax.xml.xpath.XPath;
-import javax.xml.xpath.XPathExpressionException;
-import javax.xml.xpath.XPathFactory;
-import org.traccar.helper.DriverDelegate;
-import org.traccar.helper.Log;
-import org.traccar.model.Device;
-import org.traccar.model.Position;
-import org.xml.sax.InputSource;
 
 /**
  * Database abstraction class
@@ -63,6 +62,12 @@ public class DataManager {
     private NamedParameterStatement queryGetDevices;
     private NamedParameterStatement queryAddPosition;
     private NamedParameterStatement queryUpdateLatestPosition;
+    private NamedParameterStatement queryGetDeviceSettings;
+    private NamedParameterStatement queryGetSosNumbers;
+    private NamedParameterStatement queryGetFriendsAndFamilyNumbers;
+    private NamedParameterStatement queryUpdateFriendsAndFamily;
+    private NamedParameterStatement queryUpdateSOS;
+    private NamedParameterStatement queryUpdateDeviceSettingStatus;
 
     /**
      * Initialize database
@@ -111,6 +116,32 @@ public class DataManager {
         if (query != null) {
             queryUpdateLatestPosition = new NamedParameterStatement(query, dataSource);
         }
+
+        query = properties.getProperty("database.getDeviceSettings");
+        if (query != null) {
+            queryGetDeviceSettings = new NamedParameterStatement(query, dataSource);
+        }
+        query = properties.getProperty("database.getSosNumbers");
+        if (query != null) {
+            queryGetSosNumbers = new NamedParameterStatement(query, dataSource);
+        }
+
+        query = properties.getProperty("database.getFriendsAndFamilyNumbers");
+        if (query != null) {
+            queryGetFriendsAndFamilyNumbers = new NamedParameterStatement(query, dataSource);
+        }
+        query = properties.getProperty("database.updateStatusOFSOS");
+        if (query != null) {
+            queryUpdateSOS = new NamedParameterStatement(query, dataSource);
+        }
+        query = properties.getProperty("database.updateStatusOFFriendsAndFamilyNumbers");
+        if (query != null) {
+            queryUpdateFriendsAndFamily = new NamedParameterStatement(query, dataSource);
+        }
+        query = properties.getProperty("database.updateDeviceSettingStatus");
+        if (query != null) {
+            queryUpdateDeviceSettingStatus = new NamedParameterStatement(query, dataSource);
+        }
     }
 
     private final NamedParameterStatement.ResultSetProcessor<Device> deviceResultSetProcessor = new NamedParameterStatement.ResultSetProcessor<Device>() {
@@ -130,6 +161,7 @@ public class DataManager {
             return new LinkedList<Device>();
         }
     }
+
 
     /**
      * Devices cache
@@ -152,6 +184,10 @@ public class DataManager {
 
         return devices.get(imei);
     }
+
+
+
+
 
     private NamedParameterStatement.ResultSetProcessor<Long> generatedKeysResultSetProcessor = new NamedParameterStatement.ResultSetProcessor<Long>() {
         @Override
@@ -214,5 +250,97 @@ public class DataManager {
 
         return params;
     }
+
+
+
+    //Ankit get Device Setting's Work
+
+    public DeviceSettings getDeviceSetting(Long isuraksha_devices_id)throws SQLException{
+
+        if (queryGetDeviceSettings!=null){
+            List<DeviceSettings> result=queryGetDeviceSettings.prepare().setLong("isuraksha_devices_id", isuraksha_devices_id).setString("status","UPDATED").executeQuery(generatedDeviceSettingProcessor);
+            if(result!=null && !result.isEmpty()){
+                return result.iterator().next();
+            }
+        }
+        return null;
+    }
+
+
+    private NamedParameterStatement.ResultSetProcessor<DeviceSettings> generatedDeviceSettingProcessor = new NamedParameterStatement.ResultSetProcessor<DeviceSettings>() {
+        @Override
+        public DeviceSettings processNextRow(ResultSet rs) throws SQLException {
+            DeviceSettings deviceSettings=new DeviceSettings();
+            deviceSettings.setId(rs.getLong("id"));
+            deviceSettings.setIsuraksha_devices_id(rs.getLong("isuraksha_devices_id"));
+            deviceSettings.setRefreshInterval(rs.getDouble("refresh_interval"));
+            deviceSettings.setStatus(rs.getString("status"));
+            return  deviceSettings;
+        }
+    };
+
+        // get SOS Numbers
+          public List<SosNumber> getSosNumbers(Long device_settings_id) throws SQLException{
+              if (queryGetSosNumbers!=null){
+                  List<SosNumber> result=queryGetSosNumbers.prepare().setLong("device_settings_id",device_settings_id).setString("status","UPDATED").executeQuery(generatedSosNumberProcessor);
+                  return result;
+
+              }else {
+                  return new LinkedList<SosNumber>();
+              }
+          }
+     private NamedParameterStatement.ResultSetProcessor<SosNumber> generatedSosNumberProcessor=new NamedParameterStatement.ResultSetProcessor<SosNumber>() {
+         @Override
+         public SosNumber processNextRow(ResultSet rs) throws SQLException {
+             SosNumber sosNumber=new SosNumber();
+             sosNumber.setId(rs.getLong("id"));
+             sosNumber.setNumber(rs.getString("number"));
+             sosNumber.setStatus(rs.getString("status"));
+             sosNumber.setDevice_settings_id(rs.getLong("device_settings_id"));
+             return  sosNumber;
+         }
+     };
+
+    //getFriendsAndFamilyNumber
+    public List<FriendsAndFamily>getFriendsAndFamilyNumber(Long device_settings_id) throws SQLException{
+
+        if (queryGetFriendsAndFamilyNumbers!=null){
+            List<FriendsAndFamily> result=queryGetFriendsAndFamilyNumbers.prepare().setLong("device_settings_id",device_settings_id).setString("status","UPDATED").executeQuery(generateFriendsAndFamilyNumberProcess);
+            return result;
+        }else {
+            return new LinkedList<FriendsAndFamily>();
+        }
+    }
+
+    private NamedParameterStatement.ResultSetProcessor<FriendsAndFamily> generateFriendsAndFamilyNumberProcess=new NamedParameterStatement.ResultSetProcessor<FriendsAndFamily>() {
+        @Override
+        public FriendsAndFamily processNextRow(ResultSet rs) throws SQLException {
+            FriendsAndFamily friendsAndFamily=new FriendsAndFamily();
+            friendsAndFamily.setId(rs.getLong("id"));
+            friendsAndFamily.setNumber(rs.getString("number"));
+            friendsAndFamily.setStatus(rs.getString("status"));
+            friendsAndFamily.setDevice_settings_id(rs.getLong("device_settings_id"));
+            return friendsAndFamily;
+        }
+    };
+
+ //Change Sos Status  to UPDATED On DB
+    public void changeSOSStatus(Long sosId) throws SQLException {
+        if (queryUpdateSOS != null) {
+            queryUpdateSOS.prepare().setLong("id", sosId).setString("status", "UPDATED").executeUpdate();
+        }
+    }
+//Change Friends And Family Status to UPDATED  On Db
+public void changeFriendsAndFamilyStatus(Long fnfId) throws SQLException {
+    if (queryUpdateFriendsAndFamily != null) {
+        queryUpdateFriendsAndFamily.prepare().setLong("id", fnfId).setString("status", "UPDATED").executeUpdate();
+    }
+}
+    public void changeDeviceSettingsStatus(Long deviceSettings_id) throws SQLException {
+        if (queryUpdateDeviceSettingStatus != null) {
+            queryUpdateDeviceSettingStatus.prepare().setLong("id", deviceSettings_id).setString("status", "UPDATED").executeUpdate();
+        }
+    }
+
 
 }

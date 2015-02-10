@@ -17,6 +17,8 @@ public class DeviceSettings {
 
     private Long isuraksha_devices_id;
 
+    private String device_type;
+
     public Long getId() {
         return id;
     }
@@ -47,5 +49,13 @@ public class DeviceSettings {
 
     public void setIsuraksha_devices_id(Long isuraksha_devices_id) {
         this.isuraksha_devices_id = isuraksha_devices_id;
+    }
+
+    public String getDevice_type() {
+        return device_type;
+    }
+
+    public void setDevice_type(String device_type) {
+        this.device_type = device_type;
     }
 }

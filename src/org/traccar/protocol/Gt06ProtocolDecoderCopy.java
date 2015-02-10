@@ -37,6 +37,9 @@ import java.util.TimeZone;
 
 public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
 
+    private static final String JI03_TYPE = "JI03";
+    private static final String JI09_TYPE = "JI09";
+    private static final String JI06_TYPE ="JI06" ;
     private Long deviceId;
     private DeviceSettings deviceSettings;
     private List<SosNumber> sosNumberList;
@@ -44,6 +47,11 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
     private boolean sosUpdated=false;
     private boolean friendsAndFamilyUpdated=false;
     private boolean deviceSettingExecuted=false;
+    private static int DEFAULT_DATA_SIZE=10;
+    private static int DEFAULT_CONTENT_LENGTH=4;
+    private static int DEFAULT_CRC_LENGTH=9;
+    private static int DEFAULT_PACKET_LENGTH=15;
+
 
 
 
@@ -313,7 +321,7 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
                 if(deviceSettings!=null){
                    sosNumberList=getDataManager().getSosNumbers(deviceSettings.getId());
                     friendsAndFamiliesList=getDataManager().getFriendsAndFamilyNumber(deviceSettings.getId());
-                     setIntervalTimer(channel);
+                     setTimer(channel);
                            if (sosNumberList.size()!=0){
                                setSOS(channel);
                            }else {
@@ -337,13 +345,12 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
 
     private void sendSettingPacket(Channel channel, int index, InputStream data,int dataLength) throws IOException {
 
-        ChannelBuffer response = ChannelBuffers.directBuffer(15+dataLength);
+        ChannelBuffer response = ChannelBuffers.directBuffer(DEFAULT_PACKET_LENGTH+dataLength);
         response.writeByte(0x78);
-        response.writeByte(0x78); // header
-        response.writeByte(10+dataLength); // size     //CRc Start
+        response.writeByte(0x78);
+        response.writeByte(DEFAULT_DATA_SIZE+dataLength);
         response.writeByte(MSG_COMMAND_0);
-        response.writeByte(4+dataLength); //content length
-
+        response.writeByte(DEFAULT_CONTENT_LENGTH+dataLength);
         //Server
         response.writeByte(0x00);
         response.writeByte(0x00);
@@ -355,11 +362,11 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
 
         //Serial Number
         response.writeByte(0x00);
-        response.writeByte(0xA0);    //CRc ENd Here
+        response.writeByte(0xA0);
 
-        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2,9+dataLength)));
+        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2,DEFAULT_CRC_LENGTH+dataLength)));
         response.writeByte(0x0D);
-        response.writeByte(0x0A); // ending
+        response.writeByte(0x0A);
         ChannelFuture responseFromDevice = channel.write(response);
         Log.info("Response Back By Device:" + response.toString());
         if (responseFromDevice.isSuccess()) {
@@ -385,27 +392,41 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
 
     private void setFriendsAndFamily(Channel channel) throws IOException {
         StringBuilder friendsAndFamilyData=new StringBuilder();
-        friendsAndFamilyData.append("FN,A");
-        for (FriendsAndFamily friendsAndFamily:friendsAndFamiliesList){
-            friendsAndFamilyData.append(',');
-            friendsAndFamilyData.append(friendsAndFamily.getNumber());
-        }
-        friendsAndFamilyData.append('#');
-        Log.info("Friends And Family Data is"+friendsAndFamilyData.toString());
+
+       if (deviceSettings.getDevice_type().equalsIgnoreCase(JI03_TYPE)) {
+           friendsAndFamilyData.append("FN,A");
+           for (FriendsAndFamily friendsAndFamily : friendsAndFamiliesList) {
+               friendsAndFamilyData.append(',');
+               friendsAndFamilyData.append(friendsAndFamily.getNumber());
+           }
+           friendsAndFamilyData.append('#');
+       }else if (deviceSettings.getDevice_type().equalsIgnoreCase(JI09_TYPE)||
+               deviceSettings.getDevice_type().equalsIgnoreCase(JI06_TYPE)){
+
+           friendsAndFamilyData.append("FN&&A");
+           for (FriendsAndFamily friendsAndFamily : friendsAndFamiliesList) {
+               friendsAndFamilyData.append("&&");
+               friendsAndFamilyData.append(friendsAndFamily.getName());
+               friendsAndFamilyData.append("&&");
+               friendsAndFamilyData.append(friendsAndFamily.getNumber());
+           }
+           friendsAndFamilyData.append("##");
+       }
+
+
+        Log.info("Friends And Family Data is" + friendsAndFamilyData.toString());
         InputStream data = new ByteArrayInputStream(friendsAndFamilyData.toString().getBytes(StandardCharsets.UTF_8));
-        sendSettingPacket(channel,1,data,friendsAndFamilyData.length());
+        sendSettingPacket(channel, 1, data, friendsAndFamilyData.length());
     }
 
 
-    private void setIntervalTimer(Channel channel) throws IOException {
+    private void setTimer(Channel channel) throws IOException {
         StringBuilder timer=new StringBuilder();
         timer.append("TIMER");
         timer.append('#');
-        Log.info("Friends And Family Data is"+timer.toString());
+        Log.info("Update Timer"+timer.toString());
         InputStream data = new ByteArrayInputStream(timer.toString().getBytes(StandardCharsets.UTF_8));
         sendSettingPacket(channel,1,data,timer.length());
-
     }
-
 
 }

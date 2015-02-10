@@ -26,7 +26,14 @@ import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
 import org.traccar.model.*;
 
-import java.util.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Calendar;
+import java.util.List;
+import java.util.Properties;
+import java.util.TimeZone;
 
 public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
 
@@ -299,7 +306,6 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
     }
 
 
-
     private void updateSettings(Channel channel, int index) {
         if (deviceId!=null){
             try {
@@ -307,15 +313,15 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
                 if(deviceSettings!=null){
                    sosNumberList=getDataManager().getSosNumbers(deviceSettings.getId());
                     friendsAndFamiliesList=getDataManager().getFriendsAndFamilyNumber(deviceSettings.getId());
-                  //  setIntervalTimer(channel,index);
+                     setIntervalTimer(channel);
                            if (sosNumberList.size()!=0){
-                               setSOSNew(channel, 1);
+                               setSOS(channel);
                            }else {
                                sosUpdated=true;
                            }
 
                            if (friendsAndFamiliesList.size()!=0){
-                              setFriendsAndFamily(channel,1);
+                              setFriendsAndFamily(channel);
 
                            }else {
                                friendsAndFamilyUpdated=true;
@@ -328,339 +334,78 @@ public class Gt06ProtocolDecoderCopy extends BaseProtocolDecoder {
 
     }
 
-    private void setSOSNew(Channel channel, int index) {
-        Integer totalCharacterLengthOfNumbers=0;
-        Integer server_flag=4;
-        Integer hash=1;
-        Integer comma=sosNumberList.size();
-        Integer sos_add_command_flag=5;
-        Integer serialNumber_length=2;
-        Integer crc_length=2;
 
+    private void sendSettingPacket(Channel channel, int index, InputStream data,int dataLength) throws IOException {
+
+        ChannelBuffer response = ChannelBuffers.directBuffer(15+dataLength);
+        response.writeByte(0x78);
+        response.writeByte(0x78); // header
+        response.writeByte(10+dataLength); // size     //CRc Start
+        response.writeByte(MSG_COMMAND_0);
+        response.writeByte(4+dataLength); //content length
+
+        //Server
+        response.writeByte(0x00);
+        response.writeByte(0x00);
+        response.writeByte(0x00);
+        response.writeByte(0x01);
+
+        //SMS DATA
+        response.writeBytes(data,dataLength);
+
+        //Serial Number
+        response.writeByte(0x00);
+        response.writeByte(0xA0);    //CRc ENd Here
+
+        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2,9+dataLength)));
+        response.writeByte(0x0D);
+        response.writeByte(0x0A); // ending
+        ChannelFuture responseFromDevice = channel.write(response);
+        Log.info("Response Back By Device:" + response.toString());
+        if (responseFromDevice.isSuccess()) {
+            Log.debug("Success");
+        }
+
+    }
+
+
+    private void setSOS(Channel channel) throws IOException {
+        StringBuilder sosData=new StringBuilder();
+         sosData.append("SOS,A");
         for (SosNumber sosNumber:sosNumberList){
-            char arrayOfNumber[]=sosNumber.getNumber().toCharArray();
-                 totalCharacterLengthOfNumbers=totalCharacterLengthOfNumbers+arrayOfNumber.length;
+            sosData.append(',');
+            sosData.append(sosNumber.getNumber());
         }
-
-
-        Integer contentLength=totalCharacterLengthOfNumbers+comma+server_flag+hash+sos_add_command_flag;
-        Integer size=2+server_flag+sos_add_command_flag+totalCharacterLengthOfNumbers+comma+hash+serialNumber_length+crc_length;
-        Integer crcBit=3+server_flag+sos_add_command_flag+totalCharacterLengthOfNumbers+comma+hash+serialNumber_length;
-
-        Log.info("Sending SOS Command");
-        ChannelBuffer response = ChannelBuffers.directBuffer(21+totalCharacterLengthOfNumbers+sosNumberList.size());//minimum packet length+length of number+ number of(,) that going to be used
-        // header
-        response.writeByte(0x78);
-        response.writeByte(0x78);
-
-        response.writeByte(size); // size     //CRc Start
-        response.writeByte(MSG_COMMAND_0);
-        response.writeByte(contentLength); //content length;
-        //Server
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x01);
-        //
-        //SOS Command Startflag
-        response.writeByte(0x53); //S
-        response.writeByte(0x4f);  //0
-        response.writeByte(0x53);  //S
-        //
-        response.writeByte(0x2c);/*, */
-        response.writeByte(0x41);//A
-
-        for (SosNumber sosNumber:sosNumberList){
-            response.writeByte(0x2c);/*, */
-            char arrayOfNumber[]=sosNumber.getNumber().toCharArray();
-            for (int i=0;i<arrayOfNumber.length;i++){
-                  response.writeByte(arrayOfNumber[i]);
-            }
-        }
-
-        response.writeByte(0x23);//#
-        //Serial Number
-        response.writeByte(0x00);
-        response.writeByte(0xA0);    //CRc ENd Here
-
-        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2,crcBit)));
-
-        response.writeByte(0x0D);
-        response.writeByte(0x0A); // ending
-        ChannelFuture responseFromDevice = channel.write(response);
-        Log.info("Response Back By Device:" + response.toString());
-        if (responseFromDevice.isSuccess()) {
-            Log.debug("Success");
-        }
+        sosData.append('#');
+        Log.info("SOS Command Data is"+sosData.toString());
+        InputStream data = new ByteArrayInputStream(sosData.toString().getBytes(StandardCharsets.UTF_8));
+        sendSettingPacket(channel,1,data,sosData.length());
     }
 
 
-    private void setFriendsAndFamily(Channel channel, int index){
-        Integer totalCharacterLengthOfNumbers=0;
-        Integer server_flag=4;
-        Integer hash=1;
-        Integer comma=friendsAndFamiliesList.size();
-        Integer friend_family_command_length=4;
-        Integer serialNumber_length=2;
-        Integer crc_length=2;
-
+    private void setFriendsAndFamily(Channel channel) throws IOException {
+        StringBuilder friendsAndFamilyData=new StringBuilder();
+        friendsAndFamilyData.append("FN,A");
         for (FriendsAndFamily friendsAndFamily:friendsAndFamiliesList){
-            char arrayOfNumber[]=friendsAndFamily.getNumber().toCharArray();
-            totalCharacterLengthOfNumbers=totalCharacterLengthOfNumbers+arrayOfNumber.length;
+            friendsAndFamilyData.append(',');
+            friendsAndFamilyData.append(friendsAndFamily.getNumber());
         }
-
-        Integer contentLength=totalCharacterLengthOfNumbers+comma+server_flag+hash+friend_family_command_length;
-        Integer size=2+server_flag+friend_family_command_length+totalCharacterLengthOfNumbers+comma+hash+serialNumber_length+crc_length;
-        Integer crcBit=3+server_flag+friend_family_command_length+totalCharacterLengthOfNumbers+comma+hash+serialNumber_length;
-
-        Log.info("Sending FNF Command to device");
-        ChannelBuffer response = ChannelBuffers.directBuffer(20+totalCharacterLengthOfNumbers+comma);//minimum packet length+length of number+ number of(,) that going to be used
-        response.writeByte(0x78);
-        response.writeByte(0x78); // header
-        response.writeByte(size); // size     //CRc Start
-        response.writeByte(MSG_COMMAND_0);
-        response.writeByte(contentLength); //content length;
-        //Server
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x01);
-        //
-        //SOS Command Startflag
-        response.writeByte(0x46); //F
-        response.writeByte(0x4e);  //N
-        //
-        response.writeByte(0x2c);/*, */
-        response.writeByte(0x41);//A
-
-        for (FriendsAndFamily friendsAndFamily:friendsAndFamiliesList){
-            response.writeByte(0x2c);/*, */
-            char arrayOfNumber[]=friendsAndFamily.getNumber().toCharArray();
-            for (int i=0;i<arrayOfNumber.length;i++){
-                response.writeByte(arrayOfNumber[i]);
-            }
-        }
-
-        response.writeByte(0x23);//#
-        //Serial Number
-        response.writeByte(0x00);
-        response.writeByte(0xA0);    //CRc ENd Here
-
-        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2,crcBit)));
-
-        response.writeByte(0x0D);
-        response.writeByte(0x0A); // ending
-        ChannelFuture responseFromDevice = channel.write(response);
-        Log.info("Response Back By Device:" + response.toString());
-        if (responseFromDevice.isSuccess()) {
-            Log.debug("Success");
-        }
-
+        friendsAndFamilyData.append('#');
+        Log.info("Friends And Family Data is"+friendsAndFamilyData.toString());
+        InputStream data = new ByteArrayInputStream(friendsAndFamilyData.toString().getBytes(StandardCharsets.UTF_8));
+        sendSettingPacket(channel,1,data,friendsAndFamilyData.length());
     }
 
 
-   /* private void setSOS(Channel channel, int index) {
-        Log.info("Sending Device Command");
-        ChannelBuffer response = ChannelBuffers.directBuffer(57);
-        response.writeByte(0x78);
-        response.writeByte(0x78); // header
-        response.writeByte(0x34); // size     //CRc Start
-        response.writeByte(MSG_COMMAND_0);
-
-        response.writeByte(0x2E); //content length;
-        //Server
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x01);
-        //
-        //SOS Command Startflag
-        response.writeByte(0x53); //S
-        response.writeByte(0x4f);  //0
-        response.writeByte(0x53);  //S
-        //
-        response.writeByte(0x2c);*//*, *//*
-        response.writeByte(0x41);//A
-
-        response.writeByte(0x2c);*//*, *//*
-
-
-        // Update number - 9799056600  : 39373939303536363030
-        response.writeByte(0x30);
-        response.writeByte(0x38);
-        response.writeByte(0x30);
-        response.writeByte(0x30);
-        response.writeByte(0x33);
-        response.writeByte(0x36);
-        response.writeByte(0x35);
-        response.writeByte(0x38);
-        response.writeByte(0x38);
-        response.writeByte(0x32);
-        response.writeByte(0x32);
-
-        response.writeByte(0x2c);*//*, *//*
-
-        // Update number - 9799056601  : 39373939303536363030
-        response.writeByte(0x30);
-        response.writeByte(0x38);
-        response.writeByte(0x30);
-        response.writeByte(0x30);
-        response.writeByte(0x33);
-        response.writeByte(0x36);
-        response.writeByte(0x35);
-        response.writeByte(0x38);
-        response.writeByte(0x38);
-        response.writeByte(0x32);
-        response.writeByte(0x32);
-
-
-        response.writeByte(0x2c);*//*, *//*
-
-
-        // 3 Update number - 9001818606 : 39303031383138363036
-
-        response.writeByte(0x30);
-        response.writeByte(0x38);
-        response.writeByte(0x30);
-        response.writeByte(0x30);
-        response.writeByte(0x33);
-        response.writeByte(0x36);
-        response.writeByte(0x35);
-        response.writeByte(0x38);
-        response.writeByte(0x38);
-        response.writeByte(0x32);
-        response.writeByte(0x32);
-
-        response.writeByte(0x23);//#
-
-        //Serial Number
-
-        response.writeByte(0x00);
-        response.writeByte(0xA0);    //CRc ENd Here
-
-
-        int cap = response.capacity() - 1;
-        Log.info("Total Capacity + " + cap);
-        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2, 51)));
-
-//        response.writeByte(0x1D);
-//        response.writeByte(0x0C); // ending
-
-
-        response.writeByte(0x0D);
-        response.writeByte(0x0A); // ending
-        ChannelFuture responseFromDevice = channel.write(response);
-        Log.info("Response: " + response.toString());
-        if (responseFromDevice.isSuccess()) {
-
-            Log.debug("Success");
-        }
-    }*/
-
-
-/*
-    private void deleteSOS(Channel channel, int index) {
-        Log.info("Sending Device Command to Delete SOS");
-        ChannelBuffer response = ChannelBuffers.directBuffer(27);
-        response.writeByte(0x78);
-        response.writeByte(0x78); // header
-        response.writeByte(0x16); // size
-        response.writeByte(MSG_COMMAND_0);
-
-        response.writeByte(0x10); //content length;
-
-        //Server flag
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x01);
-        //
-        //SOS Comman34d Start
-        response.writeByte(0x53);
-        response.writeByte(0x4f);
-        response.writeByte(0x53);
-        //
-        //
-        response.writeByte(0x2c);*/
-/*, *//*
-
-        response.writeByte(0x44);//D
-        response.writeByte(0x2c);//,
-        response.writeByte(0x31);//1
-        response.writeByte(0x2c);//,
-        response.writeByte(0x32);//2
-        response.writeByte(0x2c);//,
-        response.writeByte(0x33);//3
-
-        response.writeByte(0x23);//#
-
-        //Serial Number
-
-        response.writeByte(0x00);
-        response.writeByte(0x01);
-
-
-        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2, 21)));
-        response.writeByte(0x0D);
-        response.writeByte(0x0A); // ending
-        ChannelFuture responseFromDevice = channel.write(response);
-        Log.info("Response: " + response.toString());
-        if (responseFromDevice.isSuccess()) {
-
-            Log.debug("Success");
-        }
-    }
-*/
-
-    private void setIntervalTimer(Channel channel, int index){
-        Integer totalCharacterLengthOfNumbers=0;
-        Integer server_flag=4;
-        Integer hash=1;
-       // Integer comma=friendsAndFamiliesList.size();
-        Integer timer_command_length=4;
-        Integer serialNumber_length=2;
-        Integer crc_length=2;
-
-        Integer contentLength=server_flag+hash+timer_command_length;
-        Integer size=2+server_flag+timer_command_length+hash+serialNumber_length+crc_length;
-        Integer crcBit=3+server_flag+timer_command_length+totalCharacterLengthOfNumbers+hash+serialNumber_length;
-
-        Log.info("UPDATE INTERVAL CALLED");
-        ChannelBuffer response = ChannelBuffers.directBuffer(21+totalCharacterLengthOfNumbers);//minimum packet length+length of number+ number of(,) that going to be used
-        response.writeByte(0x78);
-        response.writeByte(0x78); // header
-        response.writeByte(size); // size     //CRc Start
-        response.writeByte(MSG_COMMAND_0);
-        response.writeByte(contentLength); //content length;
-        //Server
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x00);
-        response.writeByte(0x01);
-        //
-        //TIMER FLAG
-        response.writeByte('T');
-        response.writeByte('I');
-        response.writeByte('M');
-        response.writeByte('E');
-        response.writeByte('R');
-        response.writeByte(0x23);//#
-        //Serial Number
-        response.writeByte(0x00);
-        response.writeByte(0xA0);    //CRc ENd Here
-
-        response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(2,crcBit)));
-
-        response.writeByte(0x0D);
-        response.writeByte(0x0A); // ending
-        ChannelFuture responseFromDevice = channel.write(response);
-        Log.info("Response Back By Device:" + response.toString());
-        if (responseFromDevice.isSuccess()) {
-            Log.debug("Success");
-        }
+    private void setIntervalTimer(Channel channel) throws IOException {
+        StringBuilder timer=new StringBuilder();
+        timer.append("TIMER");
+        timer.append('#');
+        Log.info("Friends And Family Data is"+timer.toString());
+        InputStream data = new ByteArrayInputStream(timer.toString().getBytes(StandardCharsets.UTF_8));
+        sendSettingPacket(channel,1,data,timer.length());
 
     }
-
 
 
 }
